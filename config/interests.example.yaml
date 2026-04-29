@@ -1,0 +1,47 @@
+# Copy this file to config/interests.yaml and edit it for your personal alerts.
+# config/interests.yaml is ignored by git because it can reveal your preferences.
+
+source_url: "https://www.predoc.org/opportunities"
+database_path: "data/predoc.sqlite"
+raw_archive_dir: "data/raw"
+
+notifications:
+  # Supported in v0.0.1: console, telegram
+  channels:
+    - console
+  telegram_bot_token_env: "PREDOC_TELEGRAM_BOT_TOKEN"
+  telegram_chat_id_env: "PREDOC_TELEGRAM_CHAT_ID"
+
+interests:
+  # Keywords are matched against title, institution, researchers, fields,
+  # deadline text, notes, and the full posting card text.
+  include_keywords:
+    - development
+    - labor
+    - causal inference
+
+  # Priority keywords carry more weight.
+  priority_keywords:
+    - machine learning
+    - econometrics
+
+  # Excluded postings never alert.
+  exclude_keywords:
+    - unpaid
+
+  # These labels must match the dropdown labels on predoc.org.
+  regions:
+    - Remote
+    - Northeast
+
+  research_areas:
+    - Development
+    - Labor
+    - Statistics and Econometrics
+
+  employer_types:
+    - Academia
+    - Government, Think Tank, Nonprofit
+
+  # Score guide: keyword=3, priority keyword=4, each matching tag=2.
+  min_score: 3

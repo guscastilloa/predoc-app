@@ -1,0 +1,16 @@
+.DS_Store
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Runtime data
+data/*.sqlite
+data/*.sqlite-*
+data/raw/*.html.gz
+data/exports/*.csv
+
+# Local secrets and personal rules
+.env
+config/interests.yaml
