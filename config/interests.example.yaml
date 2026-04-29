@@ -28,6 +28,8 @@ interests:
   # Excluded postings never alert.
   exclude_keywords:
     - unpaid
+    - unable to provide visa sponsorship
+    - must be authorized to work
 
   # These labels must match the dropdown labels on predoc.org.
   regions:

@@ -4,6 +4,19 @@ All notable changes to this project will be documented here.
 
 The project follows semantic versioning while it is small: `0.x` releases may still change internal schemas, but each change should be documented.
 
+## [Unreleased]
+
+### Added
+
+- Added `preview-matches` for checking current active opportunities against a private config without sending notifications.
+- Added `test-telegram` for verifying Telegram credentials and chat routing.
+- Added `.env.example` for local Telegram environment variables.
+
+### Changed
+
+- Improved parser handling for postings that use short `Field:` or `Fields:` labels.
+- Expanded the example config with visa-related exclusion examples.
+
 ## [0.0.1] - 2026-04-29
 
 ### Added

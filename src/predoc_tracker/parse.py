@@ -22,6 +22,8 @@ LABEL_ALIASES = {
     "field of research": "fields",
     "fields of research": "fields",
     "field(s) of research": "fields",
+    "field": "fields",
+    "fields": "fields",
     "deadline": "deadline",
     "visa": "visa",
     "please note": "note",
@@ -33,6 +35,7 @@ LABEL_PATTERN = re.compile(
     r"Sponsoring Institution(?:\(s\))?s?|"
     r"Field(?:\(s\))? of Research|"
     r"Fields of Research|"
+    r"Fields?|"
     r"Deadline|Visa|Please Note|Projects"
     r")\s*:?",
     re.IGNORECASE,

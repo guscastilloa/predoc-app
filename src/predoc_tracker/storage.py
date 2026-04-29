@@ -348,6 +348,25 @@ def fetch_record(connection: sqlite3.Connection, opportunity_id: str) -> sqlite3
     return row
 
 
+def fetch_latest_observations(connection: sqlite3.Connection) -> list[sqlite3.Row]:
+    return connection.execute(
+        """
+        SELECT obs.*
+        FROM opportunities o
+        JOIN opportunity_observations obs
+          ON obs.observation_id = (
+            SELECT observation_id
+            FROM opportunity_observations latest
+            WHERE latest.opportunity_id = o.opportunity_id
+            ORDER BY observed_at DESC, observation_id DESC
+            LIMIT 1
+          )
+        WHERE o.is_active = 1
+        ORDER BY obs.title
+        """
+    ).fetchall()
+
+
 def mark_alert_sent(
     connection: sqlite3.Connection,
     *,

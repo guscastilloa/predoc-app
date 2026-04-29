@@ -112,6 +112,39 @@ export PREDOC_TELEGRAM_CHAT_ID="..."
 
 Then add `telegram` to `notifications.channels` in `config/interests.yaml`.
 
+For a private Telegram group, the usual setup is:
+
+1. Create the private group.
+2. Add your bot to the group.
+3. Send a message in the group, such as `hello`.
+4. Temporarily set your bot token locally:
+
+```bash
+export PREDOC_TELEGRAM_BOT_TOKEN="your-token-from-BotFather"
+```
+
+5. Ask Telegram for recent updates and find the group `chat.id`:
+
+```bash
+curl "https://api.telegram.org/bot$PREDOC_TELEGRAM_BOT_TOKEN/getUpdates"
+```
+
+Private group chat IDs are usually negative numbers. Private supergroup or channel IDs often start with `-100`.
+
+6. Set the chat ID:
+
+```bash
+export PREDOC_TELEGRAM_CHAT_ID="your-chat-id"
+```
+
+7. Send a test message:
+
+```bash
+predoc-tracker test-telegram
+```
+
+For a private channel instead of a group, add the bot as an administrator and use the channel chat ID.
+
 ## Usage
 
 Run a check:
@@ -130,6 +163,12 @@ Export the latest opportunity table:
 
 ```bash
 predoc-tracker export-csv
+```
+
+Preview which current active postings match your private config without sending alerts:
+
+```bash
+predoc-tracker preview-matches
 ```
 
 The default runtime files are:
