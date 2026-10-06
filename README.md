@@ -1,209 +1,113 @@
 # PREDOC Tracker
 
-PREDOC Tracker monitors the public PREDOC opportunities page and stores each scrape in a way that supports both alerts and later research on the pre-doctoral research assistant market.
+A small personal Python app that checks [PREDOC.org](https://www.predoc.org/opportunities) for pre-doctoral research opportunities and sends relevant new or changed postings to Telegram, based on configurable research interests.
 
-The project has two purposes:
+Each run saves the source page and records changes in a local SQLite database. This helps avoid duplicate alerts and preserves a history of listings for possible future research. It runs from the command line; automated scheduling is optional.
 
-- Notify a busy applicant when relevant new or changed opportunities appear.
-- Build a longitudinal dataset with enough provenance to support later analysis.
+PREDOC.org does not provide reliable posting dates, so the app records when it first observes each listing.
 
-The target source for v0.0.1 is:
+## Setup
 
-```text
-https://www.predoc.org/opportunities
-```
-
-## Why This Design
-
-The opportunities page currently returns the listings inside the server-rendered HTML. The dropdown filters on the site only show and hide cards that are already present in the page. Because there is no separate public JSON endpoint for the opportunity list, this project fetches the HTML directly, archives the raw page, parses the cards, and stores structured observations.
-
-This is intentionally a small command-line system rather than a web app. The main workflow is automatic monitoring, not browsing a dashboard.
-
-## System Purposes
-
-### Monitoring
-
-The tracker is designed to run on a schedule, for example once or twice daily. Each run:
-
-1. Fetches the PREDOC opportunities page.
-2. Archives the raw HTML with a timestamp and hash.
-3. Parses opportunity cards into structured records.
-4. Deduplicates postings across runs.
-5. Records new, updated, reactivated, and disappeared postings.
-6. Matches new or changed postings against user interest rules.
-7. Sends notification-ready alerts.
-
-### Research Data Collection
-
-The tracker preserves provenance rather than only keeping the latest state. It stores:
-
-- The raw HTML fetched on every run.
-- The timestamp and source URL for every scrape.
-- A hash of each raw page.
-- Parsed observations for every opportunity on every run.
-- A canonical opportunity table with `first_seen_at`, `last_seen_at`, and active status.
-- Event records for changes over time.
-
-The website does not expose a reliable posting date. The defensible substitute is an observation window:
-
-- `first_seen_at` is the first scrape where a posting appears.
-- The previous scrape time is the lower-bound evidence that it was not yet observed.
-- The first scrape time is the upper bound for when it appeared.
-
-More frequent scheduled runs make that estimated posting window narrower.
-
-## v0.0.1 Features
-
-- Python CLI project.
-- SQLite database for operational and research storage.
-- Gzipped raw HTML archive.
-- PREDOC opportunity parser.
-- Canonical opportunity IDs.
-- Event detection for new, updated, reactivated, and disappeared postings.
-- Configurable interest rules in YAML.
-- Console notifications.
-- Optional Telegram notifications through environment variables.
-- CSV export for analysis.
-
-## Installation
-
-Create and activate a virtual environment:
+Use Python 3.11 or newer. From the project folder:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -e .
-```
-
-The fetcher uses Python `requests` first. On macOS certificate-store failures, it falls back to system `curl`, which is available by default on macOS and in GitHub Actions.
-
-Initialize the database:
-
-```bash
 predoc-tracker init-db
 ```
 
+Activate the virtual environment again whenever you open a new terminal to work on the app.
+
 ## Configuration
 
-Copy the example config and edit your interests:
+On a fresh checkout, copy the example and edit your interests:
 
 ```bash
 cp config/interests.example.yaml config/interests.yaml
 ```
 
-`config/interests.yaml` is ignored by git because it can reveal your personal research interests.
+In `config/interests.yaml`, keywords and matching region, research-area, and employer-type tags add points. `priority_keywords` carry more weight; `exclude_keywords` reject a posting outright. A posting qualifies when its score reaches `min_score`. The example file documents the scoring and available settings.
 
-The config supports:
+### Telegram
 
-- `include_keywords`
-- `priority_keywords`
-- `exclude_keywords`
-- `regions`
-- `research_areas`
-- `employer_types`
-- `min_score`
+1. Create a bot with Telegram's **@BotFather** and save its token.
+2. Add the bot to your private group and send a message in the group. For a channel, add the bot as an administrator and publish a message.
+3. Load the token in your terminal and request recent updates:
 
-For Telegram notifications, set:
+   ```bash
+   export PREDOC_TELEGRAM_BOT_TOKEN="your-token-from-BotFather"
+   curl "https://api.telegram.org/bot$PREDOC_TELEGRAM_BOT_TOKEN/getUpdates"
+   ```
 
-```bash
-export PREDOC_TELEGRAM_BOT_TOKEN="..."
-export PREDOC_TELEGRAM_CHAT_ID="..."
-```
+4. Find your group or channel's `chat.id` in the response and set it:
 
-Then add `telegram` to `notifications.channels` in `config/interests.yaml`.
+   ```bash
+   export PREDOC_TELEGRAM_CHAT_ID="your-chat-id"
+   ```
 
-For a private Telegram group, the usual setup is:
+5. Add `telegram` to `notifications.channels` in `config/interests.yaml`, keeping `console` if you also want terminal output. Test delivery:
 
-1. Create the private group.
-2. Add your bot to the group.
-3. Send a message in the group, such as `hello`.
-4. Temporarily set your bot token locally:
+   ```bash
+   predoc-tracker test-telegram
+   ```
 
-```bash
-export PREDOC_TELEGRAM_BOT_TOKEN="your-token-from-BotFather"
-```
-
-5. Ask Telegram for recent updates and find the group `chat.id`:
+To reuse your credentials, copy `.env.example` to `.env` and fill in the values. Load it before running the app:
 
 ```bash
-curl "https://api.telegram.org/bot$PREDOC_TELEGRAM_BOT_TOKEN/getUpdates"
+source .env
 ```
 
-Private group chat IDs are usually negative numbers. Private supergroup or channel IDs often start with `-100`.
+The app does not load `.env` automatically. Credentials, personal interest rules, and generated runtime data are ignored by Git and stay local.
 
-6. Set the chat ID:
+## Running the app
 
 ```bash
-export PREDOC_TELEGRAM_CHAT_ID="your-chat-id"
+predoc-tracker check             # Fetch listings, save changes, and send matching alerts
+predoc-tracker preview-matches   # Show matches from stored active listings without sending
+predoc-tracker export-csv        # Export the latest known listings
 ```
 
-7. Send a test message:
+`preview-matches` uses the last saved data; it does not fetch the website. To fetch and store listings without sending alerts, use `predoc-tracker check --no-notify`. This still records changes, so a later check will not automatically alert for those same changes.
 
-```bash
-predoc-tracker test-telegram
-```
+Default output locations:
 
-For a private channel instead of a group, add the bot as an administrator and use the channel chat ID.
+- `data/predoc.sqlite`: listings, observations, changes, and notification records.
+- `data/raw/`: compressed copies of fetched pages.
+- `data/exports/opportunities_latest.csv`: latest CSV export.
 
-## Usage
+## How it works
 
-Run a check:
+Each check fetches the opportunities page, saves its HTML, and parses the listing cards. It compares them with the database to identify new, updated, reactivated, and disappeared listings. New, updated, or reactivated listings that match your rules become alerts; notification records help prevent repeat messages.
 
-```bash
-predoc-tracker check
-```
-
-Run without sending notifications:
-
-```bash
-predoc-tracker check --no-notify
-```
-
-Export the latest opportunity table:
-
-```bash
-predoc-tracker export-csv
-```
-
-Preview which current active postings match your private config without sending alerts:
-
-```bash
-predoc-tracker preview-matches
-```
-
-The default runtime files are:
-
-- SQLite database: `data/predoc.sqlite`
-- Raw HTML archive: `data/raw/`
-- CSV exports: `data/exports/`
-
-## Scheduling
-
-For a laptop-based setup, schedule `predoc-tracker check` with cron or launchd.
-
-For a cloud-based setup, GitHub Actions is a good next step because it can run even when the laptop is off. That requires storing notification credentials as repository secrets.
-
-## Database Tables
-
-The v0.0.1 schema includes:
-
-- `scrape_runs`: one row per run.
-- `raw_pages`: source URL, raw archive path, hash, and byte count.
-- `opportunities`: canonical deduplicated opportunities.
-- `opportunity_observations`: parsed opportunity state on each run.
-- `opportunity_events`: new, updated, reactivated, and disappeared events.
-- `alerts_sent`: deduplication log for notifications.
+The database keeps each scrape and its observations alongside the latest state of each listing. This preserves the evidence behind detected changes.
 
 ## Development
 
-Run the test suite with:
+The code lives in `src/predoc_tracker/`:
+
+| File | Responsibility |
+| --- | --- |
+| `cli.py` | Commands and arguments |
+| `pipeline.py` | Connects fetching, storage, matching, and notifications |
+| `fetch.py`, `parse.py` | Downloads the page and extracts listings |
+| `storage.py` | SQLite schema, change detection, and CSV export |
+| `match.py`, `settings.py` | Interest scoring and configuration |
+| `notify.py` | Console and Telegram messages |
+| `utils.py` | Small shared helpers |
+
+Run the existing tests after changing the code:
 
 ```bash
 python -m unittest discover -s tests
 ```
 
-Run the package module directly without installing:
+The tests cover parsing and matching. To run the app directly from source without installing the package:
 
 ```bash
 PYTHONPATH=src python -m predoc_tracker check --no-notify
 ```
+
+## Optional scheduling
+
+Checks currently run when you invoke the command. You can configure cron or launchd to run it regularly on your laptop, or add a GitHub Actions workflow to run it while the laptop is off. Any scheduled setup needs the interest configuration and Telegram credentials available in its own environment.
