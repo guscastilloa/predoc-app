@@ -14,3 +14,7 @@ data/exports/*.csv
 # Local secrets and personal rules
 .env
 config/interests.yaml
+
+# Lightweight notification ledger
+data/notification_state.json
+data/notification_state.tmp

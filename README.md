@@ -2,7 +2,7 @@
 
 A small personal Python app that checks [PREDOC.org](https://www.predoc.org/opportunities) for pre-doctoral research opportunities and sends relevant new or changed postings to Telegram, based on configurable research interests.
 
-Each run saves the source page and records changes in a local SQLite database. This helps avoid duplicate alerts and preserves a history of listings for possible future research. It runs from the command line; automated scheduling is optional.
+GitHub Actions runs the app twice a week and keeps only a small record of delivered alerts to prevent duplicates. Telegram serves as the readable archive. The original local `check` command also supports SQLite history and saved source pages.
 
 PREDOC.org does not provide reliable posting dates, so the app records when it first observes each listing.
 
@@ -89,7 +89,8 @@ The code lives in `src/predoc_tracker/`:
 | File | Responsibility |
 | --- | --- |
 | `cli.py` | Commands and arguments |
-| `pipeline.py` | Connects fetching, storage, matching, and notifications |
+| `pipeline.py` | Local checks with scrape history |
+| `monitor.py` | Scheduled checks with only a notification ledger |
 | `fetch.py`, `parse.py` | Downloads the page and extracts listings |
 | `storage.py` | SQLite schema, change detection, and CSV export |
 | `match.py`, `settings.py` | Interest scoring and configuration |
@@ -102,12 +103,24 @@ Run the existing tests after changing the code:
 python -m unittest discover -s tests
 ```
 
-The tests cover parsing and matching. To run the app directly from source without installing the package:
+The tests cover parsing, matching, duplicate prevention, and Telegram failure recovery. To run the app directly from source without installing the package:
 
 ```bash
 PYTHONPATH=src python -m predoc_tracker check --no-notify
 ```
 
-## Optional scheduling
+## Scheduled checks on GitHub Actions
 
-Checks currently run when you invoke the command. You can configure cron or launchd to run it regularly on your laptop, or add a GitHub Actions workflow to run it while the laptop is off. Any scheduled setup needs the interest configuration and Telegram credentials available in its own environment.
+The workflow in `.github/workflows/monitor.yml` runs **Mondays and Thursdays at 8 a.m. Bogotá time** (13:00 UTC). GitHub may delay scheduled runs. You can also start a check under **Actions → Check PREDOC postings → Run workflow**.
+
+Scheduled checks use `predoc-tracker monitor`: no SQLite database or page archives. Only IDs and fingerprints of successfully notified, currently listed postings are retained in `notification_state.json` on the separate `codex/notification-state` branch. Do not delete that branch: losing the record can cause repeat alerts. A listing disappearing and later returning can alert again.
+
+Three repository secrets supply the private configuration:
+
+- `PREDOC_TELEGRAM_BOT_TOKEN`
+- `PREDOC_TELEGRAM_CHAT_ID`
+- `PREDOC_INTERESTS_YAML`: the contents of your interest configuration, with `telegram` as the notification channel.
+
+Telegram messages are paced and rate-limit responses retried. Each confirmed delivery is recorded; the workflow saves partial progress even when a later delivery fails. A crash or failure while saving that record can still cause repeats. Check failed runs in the Actions tab.
+
+Runs have a 10-minute limit and cannot overlap. About 8–10 scheduled runs per month would use at most 80–100 execution minutes if each hit that limit, plus any manual runs. GitHub's private-repository allowance is shared across your account; standard runners for public repositories are free.

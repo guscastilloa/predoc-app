@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import time
 from dataclasses import dataclass
 
 import requests
@@ -61,13 +62,25 @@ def send_telegram(
 
     endpoint = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     for alert in alerts:
-        response = requests.post(
-            endpoint,
-            json={
-                "chat_id": chat_id,
-                "text": format_alert(alert),
-                "disable_web_page_preview": False,
-            },
-            timeout=20,
-        )
-        response.raise_for_status()
+        for attempt in range(4):
+            try:
+                response = requests.post(
+                    endpoint,
+                    json={"chat_id": chat_id, "text": format_alert(alert),
+                          "disable_web_page_preview": True},
+                    timeout=20,
+                )
+            except requests.RequestException:
+                # Request exceptions can contain the bot token in their URL.
+                raise RuntimeError("Telegram connection failed; delivery unconfirmed.") from None
+            if response.status_code == 429:
+                delay = response.json().get("parameters", {}).get("retry_after", 30)
+                if attempt == 3 or delay > 120:
+                    raise RuntimeError("Telegram rate limit persisted; retry next run.")
+                time.sleep(max(1, delay) + 1)
+                continue
+            if response.status_code != 200 or not response.json().get("ok"):
+                raise RuntimeError(f"Telegram rejected delivery (HTTP {response.status_code}).")
+            # Groups allow about 20 messages/minute; singleton callers need pacing too.
+            time.sleep(3.2)
+            break

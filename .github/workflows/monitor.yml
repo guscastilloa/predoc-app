@@ -1,0 +1,64 @@
+name: Check PREDOC postings
+
+on:
+  schedule:
+    # Mondays and Thursdays, 08:00 in Bogota (UTC-5).
+    - cron: '0 13 * * 1,4'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: predoc-monitor
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install app and run tests
+        run: |
+          python -m pip install .
+          python -m unittest discover -s tests
+      - name: Restore notification ledger
+        id: ledger
+        run: |
+          git fetch origin codex/notification-state
+          git worktree add "$RUNNER_TEMP/predoc-state" FETCH_HEAD
+          mkdir -p data
+          cp "$RUNNER_TEMP/predoc-state/notification_state.json" data/notification_state.json
+      - name: Load private interest configuration
+        env:
+          PREDOC_INTERESTS_YAML: ${{ secrets.PREDOC_INTERESTS_YAML }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          config = os.environ['PREDOC_INTERESTS_YAML']
+          if not config.strip():
+              raise SystemExit('Missing PREDOC_INTERESTS_YAML secret.')
+          Path('config/interests.yaml').write_text(config)
+          PY
+      - name: Check postings and send Telegram alerts
+        env:
+          PREDOC_TELEGRAM_BOT_TOKEN: ${{ secrets.PREDOC_TELEGRAM_BOT_TOKEN }}
+          PREDOC_TELEGRAM_CHAT_ID: ${{ secrets.PREDOC_TELEGRAM_CHAT_ID }}
+        run: predoc-tracker monitor
+      - name: Save successful deliveries even if a later message failed
+        if: ${{ always() && steps.ledger.outcome == 'success' }}
+        run: |
+          cp data/notification_state.json "$RUNNER_TEMP/predoc-state/notification_state.json"
+          cd "$RUNNER_TEMP/predoc-state"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add notification_state.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'Update notification ledger'
+            git push origin HEAD:codex/notification-state
+          fi

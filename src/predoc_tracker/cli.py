@@ -4,6 +4,7 @@ import argparse
 from pathlib import Path
 
 from .pipeline import run_check
+from .monitor import run_monitor
 from .settings import load_config
 from .match import MatchResult, match_record
 from .notify import Alert, send_telegram
@@ -30,6 +31,13 @@ def main(argv: list[str] | None = None) -> int:
         help="Path to YAML config. Defaults to config/interests.yaml.",
     )
     check_parser.add_argument("--no-notify", action="store_true", help="Skip notifications.")
+
+    monitor_parser = subparsers.add_parser(
+        "monitor", help="Check and alert using only a small notification ledger."
+    )
+    monitor_parser.add_argument("--config", type=Path, default=Path("config/interests.yaml"))
+    monitor_parser.add_argument("--state", type=Path, default=Path("data/notification_state.json"))
+    monitor_parser.add_argument("--no-notify", action="store_true")
 
     init_db_parser = subparsers.add_parser("init-db", help="Create the SQLite schema.")
     init_db_parser.add_argument(
@@ -84,6 +92,12 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     args = parser.parse_args(argv)
+
+    if args.command == "monitor":
+        if not args.config.exists():
+            parser.error(f"Configuration file not found: {args.config}")
+        run_monitor(load_config(args.config), args.state, notify=not args.no_notify)
+        return 0
 
     if args.command == "check":
         config = load_config(args.config)
