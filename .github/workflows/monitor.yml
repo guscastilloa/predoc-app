@@ -49,7 +49,7 @@ jobs:
         env:
           PREDOC_TELEGRAM_BOT_TOKEN: ${{ secrets.PREDOC_TELEGRAM_BOT_TOKEN }}
           PREDOC_TELEGRAM_CHAT_ID: ${{ secrets.PREDOC_TELEGRAM_CHAT_ID }}
-        run: predoc-tracker monitor
+        run: predoc-tracker monitor --receipt-out "$RUNNER_TEMP/check-receipt.json"
       - name: Save successful deliveries even if a later message failed
         if: ${{ always() && steps.ledger.outcome == 'success' }}
         run: |
@@ -62,3 +62,9 @@ jobs:
             git commit -m 'Update notification ledger'
             git push origin HEAD:codex/notification-state
           fi
+      - name: Send successful check receipt
+        if: ${{ success() }}
+        env:
+          PREDOC_TELEGRAM_BOT_TOKEN: ${{ secrets.PREDOC_TELEGRAM_BOT_TOKEN }}
+          PREDOC_TELEGRAM_CHAT_ID: ${{ secrets.PREDOC_TELEGRAM_CHAT_ID }}
+        run: predoc-tracker send-receipt --summary "$RUNNER_TEMP/check-receipt.json"

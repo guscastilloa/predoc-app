@@ -6,6 +6,8 @@ import os
 from dataclasses import asdict
 from pathlib import Path
 
+from . import __version__
+from .utils import utc_now_iso
 from .fetch import fetch_page
 from .match import match_record
 from .notify import Alert, send_console, send_telegram
@@ -20,7 +22,13 @@ def save_state(path: Path, state: dict[str, str]) -> None:
     temporary.replace(path)
 
 
-def run_monitor(config: AppConfig, state_path: Path, *, notify: bool = True) -> int:
+def run_monitor(
+    config: AppConfig, state_path: Path, *, notify: bool = True,
+    receipt_path: Path | None = None,
+) -> int:
+    # Never leave a previous receipt available after a failed or preview check.
+    if receipt_path is not None:
+        receipt_path.unlink(missing_ok=True)
     channels = config.notifications.channels
     if set(channels) - {'console', 'telegram'}:
         raise ValueError('Unsupported notification channel.')
@@ -70,5 +78,11 @@ def run_monitor(config: AppConfig, state_path: Path, *, notify: bool = True) -> 
         # Keep only IDs still listed on the source page. No posting bodies or history.
         active_ids = {record.opportunity_id for record in records}
         save_state(state_path, {key: value for key, value in state.items() if key in active_ids})
+    if notify and receipt_path is not None:
+        receipt_path.parent.mkdir(parents=True, exist_ok=True)
+        receipt_path.write_text(json.dumps({
+            'observed_count': len(records), 'alert_count': sent,
+            'completed_at': utc_now_iso(), 'version': __version__,
+        }) + '\n')
     print(f'Observed {len(records)} listings; sent {sent} alerts.')
     return sent

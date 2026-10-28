@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 import time
 from dataclasses import dataclass
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import requests
 
@@ -51,8 +53,26 @@ def send_telegram(
     bot_token_env: str,
     chat_id_env: str,
 ) -> None:
-    if not alerts:
-        return
+    for alert in alerts:
+        send_telegram_message(format_alert(alert), bot_token_env=bot_token_env,
+                              chat_id_env=chat_id_env)
+
+
+def send_receipt(summary: dict, *, bot_token_env: str, chat_id_env: str) -> None:
+    completed = datetime.fromisoformat(summary['completed_at']).astimezone(
+        ZoneInfo('America/Bogota')
+    )
+    text = (
+        'PREDOC check completed successfully\n'
+        f"Checked: {summary['observed_count']} postings\n"
+        f"New or updated alerts sent: {summary['alert_count']}\n"
+        f"Completed: {completed:%Y-%m-%d %H:%M} (Bogotá)\n"
+        f"App version: {summary['version']}"
+    )
+    send_telegram_message(text, bot_token_env=bot_token_env, chat_id_env=chat_id_env)
+
+
+def send_telegram_message(text: str, *, bot_token_env: str, chat_id_env: str) -> None:
     bot_token = os.getenv(bot_token_env)
     chat_id = os.getenv(chat_id_env)
     if not bot_token or not chat_id:
@@ -61,26 +81,25 @@ def send_telegram(
         )
 
     endpoint = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-    for alert in alerts:
-        for attempt in range(4):
-            try:
-                response = requests.post(
-                    endpoint,
-                    json={"chat_id": chat_id, "text": format_alert(alert),
-                          "disable_web_page_preview": True},
-                    timeout=20,
-                )
-            except requests.RequestException:
-                # Request exceptions can contain the bot token in their URL.
-                raise RuntimeError("Telegram connection failed; delivery unconfirmed.") from None
-            if response.status_code == 429:
-                delay = response.json().get("parameters", {}).get("retry_after", 30)
-                if attempt == 3 or delay > 120:
-                    raise RuntimeError("Telegram rate limit persisted; retry next run.")
-                time.sleep(max(1, delay) + 1)
-                continue
-            if response.status_code != 200 or not response.json().get("ok"):
-                raise RuntimeError(f"Telegram rejected delivery (HTTP {response.status_code}).")
-            # Groups allow about 20 messages/minute; singleton callers need pacing too.
-            time.sleep(3.2)
-            break
+    for attempt in range(4):
+        try:
+            response = requests.post(
+                endpoint,
+                json={"chat_id": chat_id, "text": text,
+                      "disable_web_page_preview": True},
+                timeout=20,
+            )
+        except requests.RequestException:
+            # Request exceptions can contain the bot token in their URL.
+            raise RuntimeError("Telegram connection failed; delivery unconfirmed.") from None
+        if response.status_code == 429:
+            delay = response.json().get("parameters", {}).get("retry_after", 30)
+            if attempt == 3 or delay > 120:
+                raise RuntimeError("Telegram rate limit persisted; retry next run.")
+            time.sleep(max(1, delay) + 1)
+            continue
+        if response.status_code != 200 or not response.json().get("ok"):
+            raise RuntimeError(f"Telegram rejected delivery (HTTP {response.status_code}).")
+        # Groups allow about 20 messages/minute; singleton callers need pacing too.
+        time.sleep(3.2)
+        break

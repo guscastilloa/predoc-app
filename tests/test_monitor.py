@@ -10,7 +10,7 @@ from unittest.mock import patch
 import requests
 
 from predoc_tracker.monitor import run_monitor
-from predoc_tracker.notify import Alert, send_telegram
+from predoc_tracker.notify import Alert, send_receipt, send_telegram
 from predoc_tracker.match import MatchResult
 from predoc_tracker.parse import parse_opportunities
 from predoc_tracker.settings import AppConfig, NotificationConfig
@@ -22,6 +22,7 @@ class MonitorTests(unittest.TestCase):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
         self.state = Path(self.directory.name) / 'state.json'
+        self.receipt = Path(self.directory.name) / 'receipt.json'
         self.config = AppConfig(notifications=NotificationConfig(channels=['telegram']))
         self.record = parse_opportunities(SAMPLE_HTML)[0]
         self.environment = patch.dict(os.environ, {
@@ -38,8 +39,10 @@ class MonitorTests(unittest.TestCase):
         other = replace(self.record, opportunity_id='other')
         parse.return_value = [self.record, other]
         send.side_effect = [None, RuntimeError('delivery failed')]
+        self.receipt.write_text('{}')
         with self.assertRaises(RuntimeError):
-            run_monitor(self.config, self.state)
+            run_monitor(self.config, self.state, receipt_path=self.receipt)
+        self.assertFalse(self.receipt.exists())
         self.assertEqual(json.loads(self.state.read_text()), {
             self.record.opportunity_id: self.record.content_hash,
         })
@@ -66,12 +69,50 @@ class MonitorTests(unittest.TestCase):
     @patch('predoc_tracker.monitor.fetch_page')
     def test_preview_does_not_send_or_create_state(self, fetch, send):
         fetch.return_value = SimpleNamespace(html=SAMPLE_HTML)
-        run_monitor(self.config, self.state, notify=False)
+        run_monitor(self.config, self.state, notify=False, receipt_path=self.receipt)
         send.assert_not_called()
         self.assertFalse(self.state.exists())
+        self.assertFalse(self.receipt.exists())
+
+    @patch('predoc_tracker.monitor.send_telegram')
+    @patch('predoc_tracker.monitor.fetch_page')
+    def test_receipt_summary_counts_alerts_then_records_zero_on_repeat(self, fetch, send):
+        fetch.return_value = SimpleNamespace(html=SAMPLE_HTML)
+        run_monitor(self.config, self.state, receipt_path=self.receipt)
+        summary = json.loads(self.receipt.read_text())
+        self.assertEqual(summary['observed_count'], 1)
+        self.assertEqual(summary['alert_count'], 1)
+        self.assertIn('completed_at', summary)
+        self.assertEqual(summary['version'], '0.0.2')
+        send.reset_mock()
+        run_monitor(self.config, self.state, receipt_path=self.receipt)
+        self.assertEqual(json.loads(self.receipt.read_text())['alert_count'], 0)
+        send.assert_not_called()
+
+    @patch('predoc_tracker.monitor.save_state', side_effect=OSError('disk full'))
+    @patch('predoc_tracker.monitor.fetch_page')
+    def test_state_save_failure_does_not_leave_success_receipt(self, fetch, save):
+        fetch.return_value = SimpleNamespace(html=SAMPLE_HTML)
+        self.state.write_text(json.dumps({self.record.opportunity_id: self.record.content_hash}))
+        self.receipt.write_text('{}')
+        with self.assertRaises(OSError):
+            run_monitor(self.config, self.state, receipt_path=self.receipt)
+        self.assertFalse(self.receipt.exists())
 
 
 class TelegramTests(unittest.TestCase):
+    @patch('predoc_tracker.notify.send_telegram_message')
+    def test_receipt_reports_zero_alerts_and_bogota_time(self, send):
+        send_receipt({
+            'observed_count': 159, 'alert_count': 0,
+            'completed_at': '2026-10-27T13:00:00+00:00', 'version': '0.0.2',
+        }, bot_token_env='TEST_TOKEN', chat_id_env='TEST_CHAT')
+        text = send.call_args.args[0]
+        self.assertIn('Checked: 159 postings', text)
+        self.assertIn('New or updated alerts sent: 0', text)
+        self.assertIn('2026-10-27 08:00 (Bogotá)', text)
+        self.assertIn('App version: 0.0.2', text)
+
     @patch('predoc_tracker.notify.time.sleep')
     @patch('predoc_tracker.notify.requests.post')
     def test_rate_limit_retries_and_paces(self, post, sleep):

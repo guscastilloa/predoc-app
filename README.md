@@ -111,7 +111,7 @@ PYTHONPATH=src python -m predoc_tracker check --no-notify
 
 ## Scheduled checks on GitHub Actions
 
-The workflow in `.github/workflows/monitor.yml` runs **Mondays and Thursdays at 8 a.m. Bogotá time** (13:00 UTC). GitHub may delay scheduled runs. You can also start a check under **Actions → Check PREDOC postings → Run workflow**.
+The workflow in `.github/workflows/monitor.yml` runs **Mondays and Thursdays at 8 a.m. Bogotá time** (13:00 UTC). GitHub may delay scheduled runs. After every successful check and saved notification record, Telegram receives a receipt with the number of postings checked, alerts sent (including zero), check time in Bogotá, and app version. You can also start a check under **Actions → Check PREDOC postings → Run workflow**.
 
 Scheduled checks use `predoc-tracker monitor`: no SQLite database or page archives. Only IDs and fingerprints of successfully notified, currently listed postings are retained in `notification_state.json` on the separate `codex/notification-state` branch. Do not delete that branch: losing the record can cause repeat alerts. A listing disappearing and later returning can alert again.
 
@@ -124,3 +124,5 @@ Three repository secrets supply the private configuration:
 Telegram messages are paced and rate-limit responses retried. Each confirmed delivery is recorded; the workflow saves partial progress even when a later delivery fails. A crash or failure while saving that record can still cause repeats. Check failed runs in the Actions tab.
 
 Runs have a 10-minute limit and cannot overlap. About 8–10 scheduled runs per month would use at most 80–100 execution minutes if each hit that limit, plus any manual runs. GitHub's private-repository allowance is shared across your account; standard runners for public repositories are free.
+
+Release notes are in [CHANGELOG.md](CHANGELOG.md). Releases use Git tags such as `v0.0.2`.

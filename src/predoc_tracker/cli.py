@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 from .pipeline import run_check
 from .monitor import run_monitor
 from .settings import load_config
 from .match import MatchResult, match_record
-from .notify import Alert, send_telegram
+from .notify import Alert, send_receipt, send_telegram
 from .storage import (
     connect,
     export_latest_csv,
@@ -38,6 +39,14 @@ def main(argv: list[str] | None = None) -> int:
     monitor_parser.add_argument("--config", type=Path, default=Path("config/interests.yaml"))
     monitor_parser.add_argument("--state", type=Path, default=Path("data/notification_state.json"))
     monitor_parser.add_argument("--no-notify", action="store_true")
+    monitor_parser.add_argument("--receipt-out", type=Path,
+                                help="Write a successful check summary for a later receipt.")
+
+    receipt_parser = subparsers.add_parser(
+        "send-receipt", help="Send a successful check summary to Telegram."
+    )
+    receipt_parser.add_argument("--config", type=Path, default=Path("config/interests.yaml"))
+    receipt_parser.add_argument("--summary", type=Path, required=True)
 
     init_db_parser = subparsers.add_parser("init-db", help="Create the SQLite schema.")
     init_db_parser.add_argument(
@@ -96,7 +105,20 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "monitor":
         if not args.config.exists():
             parser.error(f"Configuration file not found: {args.config}")
-        run_monitor(load_config(args.config), args.state, notify=not args.no_notify)
+        run_monitor(load_config(args.config), args.state, notify=not args.no_notify,
+                    receipt_path=args.receipt_out)
+        return 0
+
+    if args.command == "send-receipt":
+        if not args.config.exists():
+            parser.error(f"Configuration file not found: {args.config}")
+        config = load_config(args.config)
+        send_receipt(
+            json.loads(args.summary.read_text()),
+            bot_token_env=config.notifications.telegram_bot_token_env,
+            chat_id_env=config.notifications.telegram_chat_id_env,
+        )
+        print("Telegram check receipt sent.")
         return 0
 
     if args.command == "check":

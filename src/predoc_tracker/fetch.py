@@ -8,10 +8,11 @@ from pathlib import Path
 import requests
 import certifi
 
+from . import __version__
 from .utils import ensure_parent, sha256_text
 
 
-USER_AGENT = "predoc-tracker/0.0.1 (+https://www.predoc.org/opportunities monitor)"
+USER_AGENT = f"predoc-tracker/{__version__} (+https://www.predoc.org/opportunities monitor)"
 
 
 @dataclass(frozen=True)
